@@ -1,0 +1,34 @@
+{
+  "name": "assesment",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon --exec ts-node ./server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "seed": "ts-node seeds/seed.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/helmet": "^4.0.0",
+    "@types/node": "^25.2.3",
+    "@types/sequelize": "^6.12.0",
+    "nodemon": "^3.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "helmet": "^8.1.0",
+    "mysql2": "^3.17.0",
+    "sequelize": "^6.37.7"
+  }
+}
