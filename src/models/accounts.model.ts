@@ -35,11 +35,16 @@ const AccountsModel = (sequelize: Sequelize) => {
           key: "id",
         },
       },
+      balance: {
+        type: DataTypes.BIGINT,
+        allowNull: false,
+        defaultValue: 0,
+      },
     },
     {
       tableName: "accounts",
       timestamps: true,
-    }
+    },
   );
 
   return Accounts;

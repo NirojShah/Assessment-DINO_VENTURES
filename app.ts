@@ -3,6 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import accountRouter from "./src/route/account.route";
 import transactionRoute from "./src/route/transaction.route";
+import walletRouter from "./src/route/wallet.route";
 
 const app: Application = express();
 
@@ -17,6 +18,8 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/accounts", accountRouter);
 app.use("/transactions", transactionRoute);
+app.use("/wallet", walletRouter);
+
 // Health check
 app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date() });

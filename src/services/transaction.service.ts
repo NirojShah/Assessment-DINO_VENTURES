@@ -1,24 +1,51 @@
-import Database from "../config/db";
 import { Transaction } from "sequelize";
+import Database from "../config/db";
 
-/**
- * Create Transaction (Double Entry Ledger)
- *
- * Treasury -> User (Topup/Bonus)
- * User -> Treasury (Spend)
- */
 export const createTransaction = async (data: any) => {
   const sequelize = Database.getInstance();
-
-  // Correct: Get models from Database (already initialized)
   const { Transactions, TransactionEntries, Accounts } = Database.getModels();
 
   return await sequelize.transaction(async (t: Transaction) => {
     const { type, referenceId, entries } = data;
 
-    /**
-     * Step 1: Create Parent Transaction
-     */
+    // -------------------------------
+    // ✅ Step 0: Idempotency Check
+    // -------------------------------
+    const existingTx = await Transactions.findOne({
+      where: { referenceId },
+      transaction: t,
+      lock: t.LOCK.KEY_SHARE,
+    });
+
+    if (existingTx) {
+      return existingTx;
+    }
+
+    // -------------------------------
+    // Step 1: Validate Entries
+    // -------------------------------
+    if (!entries || entries.length < 2) {
+      throw new Error("Transaction must have at least 2 entries");
+    }
+
+    // -------------------------------
+    // ✅ Step 2: Debit = Credit Validation
+    // -------------------------------
+    const totalDebit = entries
+      .filter((e: any) => e.entryType === "DEBIT")
+      .reduce((sum: number, e: any) => sum + e.amount, 0);
+
+    const totalCredit = entries
+      .filter((e: any) => e.entryType === "CREDIT")
+      .reduce((sum: number, e: any) => sum + e.amount, 0);
+
+    if (totalDebit !== totalCredit) {
+      throw new Error("Ledger mismatch: Total Debit must equal Total Credit");
+    }
+
+    // -------------------------------
+    // Step 3: Create Parent Transaction
+    // -------------------------------
     const transaction = await Transactions.create(
       {
         type,
@@ -28,23 +55,32 @@ export const createTransaction = async (data: any) => {
       { transaction: t },
     );
 
-    /**
-     * Step 2: Validate Ledger Entries
-     */
-    if (!entries || entries.length < 2) {
-      throw new Error("Transaction must have at least 2 entries");
-    }
+    // -------------------------------
+    // ✅ Step 4: Deadlock Avoidance
+    // Lock accounts in consistent order
+    // -------------------------------
+    const accountIds = [
+      ...new Set(entries.map((e: any) => e.accountId)),
+    ].sort();
 
-    /**
-     * Step 3: Process Each Entry
-     */
-    for (const entry of entries) {
-      const account = await Accounts.findByPk(entry.accountId, {
+    const lockedAccounts: any = {};
+
+    for (const id of accountIds) {
+      const acc = await Accounts.findByPk(id, {
         transaction: t,
-        lock: t.LOCK.UPDATE, // 🔥 prevents race condition
+        lock: t.LOCK.UPDATE,
       });
 
-      if (!account) throw new Error("Account not found");
+      if (!acc) throw new Error(`Account ${id} not found`);
+
+      lockedAccounts[id as any] = acc;
+    }
+
+    // -------------------------------
+    // Step 5: Apply Balance Changes + Ledger Insert
+    // -------------------------------
+    for (const entry of entries) {
+      const account = lockedAccounts[entry.accountId];
 
       // Debit reduces balance
       if (entry.entryType === "DEBIT") {
@@ -52,19 +88,21 @@ export const createTransaction = async (data: any) => {
           throw new Error("Insufficient balance");
         }
 
-        account.balance = Number(account.balance) - entry.amount;
+        await account.decrement("balance", {
+          by: entry.amount,
+          transaction: t,
+        });
       }
 
       // Credit increases balance
       if (entry.entryType === "CREDIT") {
-        account.balance = Number(account.balance) + entry.amount;
+        await account.increment("balance", {
+          by: entry.amount,
+          transaction: t,
+        });
       }
 
-      await account.save({ transaction: t });
-
-      /**
-       * Step 4: Create Ledger Entry
-       */
+      // Create Ledger Entry
       await TransactionEntries.create(
         {
           transactionId: transaction.id,
@@ -80,13 +118,9 @@ export const createTransaction = async (data: any) => {
   });
 };
 
-/**
- * Get All Transactions
- */
 export const getAllTransactions = async () => {
   // Correct: use initialized models
   const { Transactions, TransactionEntries } = Database.getModels();
-
   return await Transactions.findAll({
     include: [{ model: TransactionEntries }],
   });
