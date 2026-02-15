@@ -12,6 +12,11 @@ services:
       - "3306:3306"
     volumes:
       - wallet_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   api:
     build: .
@@ -20,14 +25,15 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     environment:
       DB_HOST: mysql
       DB_USER: root
       DB_PASSWORD: root
       DB_NAME: wallet_db
       DB_PORT: 3306
-    command: npm run dev
+    command: sh -c "npm run seed && npm start"
 
 volumes:
   wallet_data:
